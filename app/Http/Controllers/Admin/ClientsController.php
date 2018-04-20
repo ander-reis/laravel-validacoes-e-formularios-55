@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Client;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 
@@ -14,7 +15,8 @@ class ClientsController extends Controller
      */
     public function index()
     {
-        //
+        $clients = Client::all();
+        return view('admin.clients.index', compact('clients'));
     }
 
     /**
@@ -22,9 +24,10 @@ class ClientsController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function create()
+    public function create(Request $request)
     {
-        //
+        $clientType = Client::getClientType($request->client_type);
+        return view('admin.clients.create', ['client' => new Client(), 'clientType' => $clientType]);
     }
 
     /**
@@ -35,7 +38,11 @@ class ClientsController extends Controller
      */
     public function store(Request $request)
     {
-        //
+       $data = $this->_validate($request);
+        $data['defaulter'] = $request->has('defaulter');
+        $data['client_type'] = Client::getClientType($request->client_type);
+        Client::create($data);
+        return redirect()->route('clients.index');
     }
 
     /**
@@ -44,20 +51,23 @@ class ClientsController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function show($id)
+    public function show(Client $client)
     {
-        //
+
+        return view('admin.clients.show', compact('client'));
     }
 
     /**
      * Show the form for editing the specified resource.
      *
-     * @param  int  $id
+     * @param  int  $client
      * @return \Illuminate\Http\Response
      */
-    public function edit($id)
+    public function edit(Client $client)
     {
-        //
+        $rota = 'clients.index';
+        $clientType = $client->client_type;
+        return view('admin.clients.edit', compact('client', 'rota', 'clientType'));
     }
 
     /**
@@ -67,9 +77,13 @@ class ClientsController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(Request $request, Client $client)
     {
-        //
+        $data = $this->_validate($request);
+        $data['defaulter'] = $request->has('defaulter');
+        $client->fill($data);
+        $client->save();
+        return redirect()->route('clients.index');
     }
 
     /**
@@ -78,8 +92,34 @@ class ClientsController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function destroy($id)
+    public function destroy(Client $client)
     {
-        //
+        $client->delete();
+        return redirect()->route('clients.index');
+    }
+
+    protected function _validate(Request $request)
+    {
+        $clientType = Client::getClientType($request->client_type);
+        $documentNumberType = $clientType == Client::TYPE_INDIVIDUAL ? 'cpf' : 'cnpj';
+        $client = $request->route('client');
+        $clientId = $client instanceof Client ? $client->id : null;
+        $rules = [
+            'name' => 'required|max:191',
+            'document_number' => "required|unique:clients,document_number,$clientId|document_number:$documentNumberType",
+            'email' => 'required|email',
+            'phone' => 'required',
+        ];
+        $maritalStatus = implode(',', array_keys(Client::MARITAL_STATUS));
+        $rulesIndividual = [
+            'date_birth' => 'required|date',
+            'marital_status' => "required|in:$maritalStatus",
+            'sex' => 'required|in:m,f',
+            'physical_disability' => 'max:255'
+        ];
+        $rulesLegal = [
+            'company_name' => 'required|max:255'
+        ];
+        return $this->validate($request, $clientType == Client::TYPE_INDIVIDUAL ? $rules + $rulesIndividual : $rules + $rulesLegal);
     }
 }
